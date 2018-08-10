@@ -1,5 +1,4 @@
 #r "System.IO"
-open System.IO
 #r "System.Net.Http"
 
 open System.IO
