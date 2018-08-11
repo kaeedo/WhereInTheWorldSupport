@@ -1,11 +1,15 @@
+#r "System"
 #r "System.IO"
 #r "System.Net.Http"
 
+open System
 open System.IO
 open System.Net.Http
 
+
 let downloadUrl = "http://download.geonames.org/export/dump/"
 let countryInformationFileName = "countryInformation.txt"
+let supportedCountriesFileName = "supportedCountries.txt"
 
 let downloadCountryInformation () =
     let httpClient = new HttpClient()
@@ -36,6 +40,18 @@ let parseInformation (fileContents: string seq) =
 let supportedCountryList (parsedContents: string[] seq) =
     parsedContents
     |> Seq.map (fun pc -> pc.[0], pc.[4])
+
+let writeSupportedCountries (supportedCountries: (string * string) seq) =
+    if File.Exists(supportedCountriesFileName)
+    then File.Delete(supportedCountriesFileName)
+
+    let countriesList =
+        supportedCountries
+        |> Seq.map (fun (code, name) ->
+            sprintf "%s,%s" code name
+        )
+
+    File.WriteAllLines(supportedCountriesFileName, countriesList)
 
 let batchesOf n =
     Seq.mapi (fun i v -> i / n, v) >>
@@ -72,9 +88,27 @@ let downloadZips (supportedCountries: (string * string) seq) =
     )
 
 
-(downloadCountryInformation
->> loadFile
->> deleteComments
->> parseInformation
->> supportedCountryList
->> downloadZips) ()
+let downloadZipFiles =
+    downloadCountryInformation
+    >> loadFile
+    >> deleteComments
+    >> parseInformation
+    >> supportedCountryList
+    >> downloadZips
+
+let createSupportedCountryList =
+    downloadCountryInformation
+    >> loadFile
+    >> deleteComments
+    >> parseInformation
+    >> supportedCountryList
+    >> writeSupportedCountries
+
+let args = Environment.GetCommandLineArgs()
+if args.[2] = "downloadall"
+then downloadZipFiles()
+
+if args.[2] = "supportedcountries"
+then createSupportedCountryList()
+
+0
