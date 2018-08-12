@@ -6,26 +6,34 @@ open System
 open System.IO
 open System.Net.Http
 
+let (++) a b = Path.Combine(a, b)
 
-let downloadUrl = "http://download.geonames.org/export/dump/"
+let verboseDownloadUrl = "http://download.geonames.org/export/dump/"
+let simpleDownloadUrl = "http://download.geonames.org/export/zip/"
+
 let countryInformationFileName = "countryInformation.txt"
 let supportedCountriesFileName = "supportedCountries.txt"
+
+let ensureCleanDirectory directory =
+    if Directory.Exists(directory)
+    then Directory.Delete(directory, true)
+
+    Directory.CreateDirectory(directory) |> ignore
 
 let downloadCountryInformation () =
     let httpClient = new HttpClient()
     let response =
-        httpClient.GetStringAsync(downloadUrl + "countryInfo.txt")
+        httpClient.GetStringAsync(verboseDownloadUrl + "countryInfo.txt")
         |> Async.AwaitTask
         |> Async.RunSynchronously
 
-    if File.Exists(countryInformationFileName)
-    then File.Delete(countryInformationFileName)
+    if File.Exists("verbose" ++ countryInformationFileName)
+    then File.Delete("verbose" ++ countryInformationFileName)
 
-    File.WriteAllLines(countryInformationFileName, response.Split('\n'))
+    File.WriteAllLines("verbose" ++ countryInformationFileName, response.Split('\n'))
     countryInformationFileName
 
-let loadFile fileName =
-    File.ReadAllLines(fileName)
+let loadFile fileName = File.ReadAllLines("verbose" ++ fileName)
 
 let deleteComments (fileContents: string seq) =
     fileContents
@@ -42,8 +50,8 @@ let supportedCountryList (parsedContents: string[] seq) =
     |> Seq.map (fun pc -> pc.[0], pc.[4])
 
 let writeSupportedCountries (supportedCountries: (string * string) seq) =
-    if File.Exists(supportedCountriesFileName)
-    then File.Delete(supportedCountriesFileName)
+    if File.Exists("verbose" ++ supportedCountriesFileName)
+    then File.Delete("verbose" ++ supportedCountriesFileName)
 
     let countriesList =
         supportedCountries
@@ -51,7 +59,15 @@ let writeSupportedCountries (supportedCountries: (string * string) seq) =
             sprintf "%s,%s" code name
         )
 
-    File.WriteAllLines(supportedCountriesFileName, countriesList)
+    File.WriteAllLines("verbose" ++ supportedCountriesFileName, countriesList)
+
+let readSimpleCountryList () =
+    File.ReadAllLines("simple" ++ supportedCountriesFileName)
+    |> Seq.filter (fun l -> l.Length > 1)
+    |> Seq.map (fun l ->
+        let parts = l.Split(',')
+        (parts.[0], parts.[1])
+    )
 
 let batchesOf n =
     Seq.mapi (fun i v -> i / n, v) >>
@@ -59,8 +75,8 @@ let batchesOf n =
     Seq.map snd >>
     Seq.map (Seq.map snd)
 
-let downloadZips (supportedCountries: (string * string) seq) =
-    let directoryName = "countryFiles"
+let downloadZips directory downloadUrl (supportedCountries: (string * string) seq) =
+    let directoryName = directory ++ "countryFiles"
     if not (Directory.Exists(directoryName))
     then Directory.CreateDirectory(directoryName) |> ignore
 
@@ -70,7 +86,7 @@ let downloadZips (supportedCountries: (string * string) seq) =
             let httpClient = new HttpClient()
             let! response = (httpClient.GetByteArrayAsync(sprintf "%s/%s.zip" downloadUrl code) |> Async.AwaitTask)
 
-            let countryZipFileName = sprintf "%s\\%s.zip" directoryName code
+            let countryZipFileName = directoryName ++ (code + ".zip")
 
             if File.Exists(countryZipFileName)
             then File.Delete(countryZipFileName)
@@ -88,13 +104,17 @@ let downloadZips (supportedCountries: (string * string) seq) =
     )
 
 
-let downloadZipFiles =
+let downloadVerboseZipFiles =
     downloadCountryInformation
     >> loadFile
     >> deleteComments
     >> parseInformation
     >> supportedCountryList
-    >> downloadZips
+    >> (downloadZips "verbose" verboseDownloadUrl)
+
+let downloadSimpleZipFiles =
+    readSimpleCountryList
+    >> (downloadZips "simple" simpleDownloadUrl)
 
 let createSupportedCountryList =
     downloadCountryInformation
@@ -105,10 +125,22 @@ let createSupportedCountryList =
     >> writeSupportedCountries
 
 let args = Environment.GetCommandLineArgs()
-if args.[2] = "downloadall"
-then downloadZipFiles()
+if args.[2] = "downloadverbose"
+then
+    printfn "Downloading verbose zip files"
+    ensureCleanDirectory ("verbose" ++ "countryFiles")
+    downloadVerboseZipFiles()
+
+if args.[2] = "downloadsimple"
+then
+    printfn "Downloading simple zip files"
+    ensureCleanDirectory ("simple" ++ "countryFiles")
+    downloadSimpleZipFiles()
 
 if args.[2] = "supportedcountries"
-then createSupportedCountryList()
+then
+    printfn "Creating verbose supported country list"
+    ensureCleanDirectory ("verbose" ++ "countryFiles")
+    createSupportedCountryList()
 
 0
