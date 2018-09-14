@@ -70,7 +70,7 @@ let writeCountryInformation (countries: (string * string * string) seq) =
     let countryPostalCodeInformation =
         countries
         |> Seq.map (fun (code, postalCodeFormat, postalCodeRegex) ->
-            sprintf "%s,%s,%s" code postalCodeFormat postalCodeRegex
+            sprintf "%s\t%s\t%s" code postalCodeFormat postalCodeRegex
         )
 
     File.WriteAllLines("simple" ++ countryInformationPostalCodesFileName, countryPostalCodeInformation)
