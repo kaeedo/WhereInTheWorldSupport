@@ -14,6 +14,8 @@ let simpleDownloadUrl = "http://download.geonames.org/export/zip/"
 let countryInformationFileName = "countryInformation.txt"
 let supportedCountriesFileName = "supportedCountries.txt"
 
+let countryInformationPostalCodesFileName = "countryInformationPostalCodes.txt"
+
 let ensureCleanDirectory directory =
     if Directory.Exists(directory)
     then Directory.Delete(directory, true)
@@ -61,6 +63,18 @@ let writeSupportedCountries (supportedCountries: (string * string) seq) =
 
     File.WriteAllLines("verbose" ++ supportedCountriesFileName, countriesList)
 
+let writeCountryInformation (countries: (string * string * string) seq) =
+    if File.Exists("simple" ++ countryInformationPostalCodesFileName)
+    then File.Delete("simple" ++ countryInformationPostalCodesFileName)
+
+    let countryPostalCodeInformation =
+        countries
+        |> Seq.map (fun (code, postalCodeFormat, postalCodeRegex) ->
+            sprintf "%s,%s,%s" code postalCodeFormat postalCodeRegex
+        )
+
+    File.WriteAllLines("simple" ++ countryInformationPostalCodesFileName, countryPostalCodeInformation)
+
 let readSimpleCountryList () =
     File.ReadAllLines("simple" ++ supportedCountriesFileName)
     |> Seq.filter (fun l -> l.Length > 1)
@@ -103,7 +117,6 @@ let downloadZips directory downloadUrl (supportedCountries: (string * string) se
         |> ignore
     )
 
-
 let downloadVerboseZipFiles =
     downloadCountryInformation
     >> loadFile
@@ -115,6 +128,20 @@ let downloadVerboseZipFiles =
 let downloadSimpleZipFiles =
     readSimpleCountryList
     >> (downloadZips "simple" simpleDownloadUrl)
+
+let createSimplePostalCodeFormatFile () =
+    (downloadCountryInformation
+    >> loadFile
+    >> deleteComments
+    >> parseInformation) ()
+    |> Seq.filter (fun ci ->
+        readSimpleCountryList ()
+        |> Seq.exists (fun scl -> fst scl = ci.[0])
+    )
+    |> Seq.map (fun ci ->
+        ci.[0], ci.[13], ci.[14]
+    )
+    |> writeCountryInformation
 
 let createSupportedCountryList =
     downloadCountryInformation
@@ -142,5 +169,10 @@ then
     printfn "Creating verbose supported country list"
     ensureCleanDirectory ("verbose" ++ "countryFiles")
     createSupportedCountryList()
+
+if args.[2] = "postalcodeformat"
+then
+    printfn "Creating postal code format file for simple countries"
+    createSimplePostalCodeFormatFile()
 
 0
